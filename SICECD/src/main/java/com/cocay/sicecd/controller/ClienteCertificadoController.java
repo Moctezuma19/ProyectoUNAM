@@ -1,16 +1,21 @@
 package com.cocay.sicecd.controller;
 
 import com.cocay.sicecd.model.Curso;
+import com.cocay.sicecd.LogTypes;
 import com.cocay.sicecd.model.Certificado;
 import com.cocay.sicecd.model.Profesor;
+import com.cocay.sicecd.model.Url_ws;
 import com.cocay.sicecd.repo.CertificadoRep;
 import com.cocay.sicecd.repo.CursoRep;
 import com.cocay.sicecd.repo.ProfesorRep;
+import com.cocay.sicecd.repo.Url_wsRep;
 import com.cocay.sicecd.security.pdf.SeguridadPDF;
+import com.cocay.sicecd.service.Logging;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -38,8 +43,6 @@ import org.json.*;
 public class ClienteCertificadoController {
 	@Value("${ws.ruta_local}")
 	private String RUTA_LOCAL;
-	@Value("${ws.url_rs}")
-	private String URL_RS;
 	@Value("${ws.clave}")
 	private String clave;
 	@Autowired
@@ -48,18 +51,12 @@ public class ClienteCertificadoController {
 	ProfesorRep bd_profesor;
 	@Autowired
 	CursoRep bd_curso;
-
-	/**
-	 * Metodo que obtiene un certificado dado un correo y nombre de curso, el cual
-	 * es depositado en alguna carpeta y guardada su direccion en una base de datos.
-	 * 
-	 * @param correo       Correo de usuario.
-	 * @param nombre_curso Nombre del curso en el cual esta inscrito el usuario.
-	 * @return Devuelve la ruta en el sistema de archivos si el certificado se
-	 *         obtuvo y se ha guardado en Disco y en la BD.
-	 */
-	public String obtenCertificado(Profesor profesor, Curso curso) throws Exception {
-
+	@Autowired
+	Logging log;
+	@Autowired
+	Url_wsRep urls;
+	
+	private String aux_obten(Profesor profesor, Curso curso, String URL_RS) throws Exception{
 		String correo = profesor.getCorreo();
 		String nombre_curso = curso.getNombre();
 		Certificado cert = new Certificado();
@@ -89,6 +86,7 @@ public class ClienteCertificadoController {
 		JSONObject json = new JSONObject(jsonText);
 		String mensaje = (String) json.get("mensaje");
 		if (!mensaje.equals("NULL")) {
+			//log.setTrace(LogTypes.EXTRACCION_CONSTANCIAS_NUEVAS, "0 constancias nuevas extraídas de 1 solicitadas");
 			return null;
 		}
 		String string_pdf = (String) json.get("bytespdf");
@@ -110,8 +108,31 @@ public class ClienteCertificadoController {
 		cert.setTiempo_creado(Long.parseLong((String) json.get("tiempo")));
 		cert.setRuta(path);
 		bd_certificado.save(cert);
+		log.setTrace(LogTypes.EXTRACCION_CONSTANCIAS_NUEVAS, "1 constancia nueva extraída de 1 solicitada");
 		return path;
-		// return true;
+	}
+	/**
+	 * Metodo que obtiene un certificado dado un correo y nombre de curso, el cual
+	 * es depositado en alguna carpeta y guardada su direccion en una base de datos.
+	 * 
+	 * @param correo       Correo de usuario.
+	 * @param nombre_curso Nombre del curso en el cual esta inscrito el usuario.
+	 * @return Devuelve la ruta en el sistema de archivos si el certificado se
+	 *         obtuvo y se ha guardado en Disco y en la BD.
+	 */
+	public String obtenCertificado(Profesor profesor, Curso curso) throws Exception {
+		LinkedList<Url_ws> links = new LinkedList<>(urls.findSimples());
+		if(links.size() == 0) {
+			throw new Exception("No hay urls!");
+		}
+		for(Url_ws u : links) {
+			String resultado = aux_obten(profesor,curso,u.getUrl());
+			if(resultado != null) {
+				return resultado;
+			}
+		}
+		log.setTrace(LogTypes.EXTRACCION_CONSTANCIAS_NUEVAS, "0 constancias nuevas extraídas de 1 solicitadas");
+		return null;
 	}
 
 	@RequestMapping(value = "/certificado", method = RequestMethod.GET)
